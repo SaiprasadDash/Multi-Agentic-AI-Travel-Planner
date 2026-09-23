@@ -8,7 +8,7 @@ load_dotenv()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_search = TavilySearch(
-    max_results=5
+    max_results=2
 )
 
 # Store previous searches
@@ -16,6 +16,10 @@ _search_cache = {}
 
 @tool
 def search_web(query: str) -> list[dict]:
+    """
+    Search the web using Tavily.
+
+    """
 
     query = query.strip()
 

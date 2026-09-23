@@ -7,14 +7,29 @@ load_dotenv()
 
 AVIATIONSTACK_API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
 
+from langchain_core.tools import tool
+import requests
+import os
+
+API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
+
+
 @tool
 def search_flights(query: str) -> list[dict]:
-    
+    """
+    Search for flights using AviationStack.
+
+    """
+
     url = "http://api.aviationstack.com/v1/flights"
+
+    # Example:
+    # query = "BBI to DEL"
+    # But currently the query is not being used to filter the API.
 
     params = {
         "access_key": API_KEY,
-        "limit": 5
+        "limit": 3
     }
 
     response = requests.get(
