@@ -79,7 +79,7 @@ async def initialize_mcp():
     for tool in tools:
         print(tool.name)
 
-    search_tool = next(tool for tool in tools if tool.name == "search")
+    search_tool = next(tool for tool in tools if tool.name == "tavily_search")
 
 
     aviation_tools = {tool.name: tool for tool in tools if tool.name != "tavily_search"}
@@ -154,7 +154,7 @@ async def initialize_weather_tools():
 
     forecast_tool = next(
         t for t in tools
-        if t.name == "get_forecast"
+        if t.name == "get_forcast"
     )
 
 
@@ -180,12 +180,12 @@ async def forecast_mcp_search(city: str):
     )
 
 
-
 from langchain_groq import ChatGroq
 
 # LLM
 llm = ChatGroq(
-    model="qwen/qwen3.8-27b"
+    model="qwen/qwen3.8-27b",
+    max_tokens=20
 )
 
 ###################################

@@ -13,7 +13,7 @@ from langchain_groq import ChatGroq
 # from tools.flight_tool import search_flights
 # from tools.tavily_tool import search_web
 
-from mcp_client import tavily_mcp_search, aviation_mcp_call, get_airports, get_airlines, weather_mcp_search, forecast_mcp_search
+from mcp_client import tavily_mcp_search, aviation_mcp_call, get_airports, get_airlines, weather_mcp_search, forecast_mcp_search, extract_destination
 
 
 load_dotenv()
@@ -42,13 +42,14 @@ class TravelState(TypedDict):
 
     flight_results: str
     hotel_results: str
+    weather_results: str
     itinerary: str
-    llm_call: int
+    llm_calls: int
 
 
 # flight_llm = llm.bind_tools([search_flights])
 # hotel_llm = llm.bind_tools([search_web])
-itinerary_llm = llm.bind_tools([search_web])
+# itinerary_llm = llm.bind_tools([search_web])
 
 # Flight Tool Router Prompt
 FLIGHT_AGENT_PROMPT = """
@@ -141,7 +142,7 @@ def hotel_agent(state: TravelState):
 
 
 def weather_agent(state: TravelState):
-    city = exatract_destination(state["user_query"])
+    city = extract_destination(state["user_query"])
 
     weather_data = asyncio.run(
         weather_mcp_search(city)
@@ -199,63 +200,6 @@ def itinerary_agent(state: TravelState):
     }
 
 
-def final_agent(state: TravelState):
-    """
-    Final Response Agent:
-    - Reads the results from Flight, Hotel, and Itinerary agents
-    - Combines them
-    - Generates the final travel plan
-    """
-
-    system_prompt = """
-You are the Final Response Agent in an AI Travel Planner.
-
-Your job is to combine the results produced by the specialized
-Flight, Hotel, and Itinerary agents.
-
-Create one clear and useful travel plan for the user.
-
-Use only the information provided by the agents.
-Do not invent flight, hotel, or itinerary information.
-
-Organize the response into:
-
-1. Flight Information
-2. Hotel Information
-3. Day-by-Day Itinerary
-4. Important Notes
-
-If information is unavailable, clearly mention that it is unavailable.
-
-Keep the response concise, structured, and easy to understand.
-"""
-
-    prompt = f"""
-User Request:
-{state["user_query"]}
-
-Flight Agent Result:
-{state["flight_results"]}
-
-Hotel Agent Result:
-{state["hotel_results"]}
-
-Itinerary Agent Result:
-{state["itinerary"]}
-"""
-
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=prompt)
-    ]
-
-    response = llm.invoke(messages)
-
-    return {
-        "messages": [response],
-        "llm_call": state["llm_call"] + 1
-    }
-
 
 # ============================================================
 # BUILD GRAPH
@@ -268,8 +212,9 @@ graph = StateGraph(TravelState)
 # graph.add_node("request_parser", request_parser)
 graph.add_node("flight_agent", flight_agent)
 graph.add_node("hotel_agent", hotel_agent)
+graph.add_node("weather_agent", weather_agent)
 graph.add_node("itinerary_agent", itinerary_agent)
-graph.add_node("final_agent", final_agent)
+# graph.add_node("final_agent", final_agent)
 
 
 # ============================================================
@@ -285,16 +230,17 @@ graph.add_edge(
 )
 graph.add_edge(
     "hotel_agent",
+    "weather_agent"
+)
+graph.add_edge(
+    "weather_agent",
     "itinerary_agent"
 )
 graph.add_edge(
     "itinerary_agent",
-    "final_agent"
-)
-graph.add_edge(
-    "final_agent",
     END
 )
+
 
 # Persistent connection so both CLI and Streamlit can share the compiled app
 _conn = psycopg.connect(DATABASE_URL, autocommit=True)
@@ -330,8 +276,9 @@ if __name__ == "__main__":
             "messages": [],
             "flight_results": "",
             "hotel_results": "",
+            "weather_results": "",
             "itinerary": "",
-            "llm_call": 0
+            "llm_calls": 0
         },
         config=config
     )
@@ -344,4 +291,4 @@ if __name__ == "__main__":
     print(result["messages"][-1].content)
 
     print("\n")
-    print("LLM Calls:", result["llm_call"])
+    print("LLM Calls:", result["llm_calls"])
