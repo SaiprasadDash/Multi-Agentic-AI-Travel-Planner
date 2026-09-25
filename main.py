@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import TypedDict, Annotated
 
@@ -9,8 +10,10 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
 from langchain_groq import ChatGroq
 
-from tools.flight_tool import search_flights
-from tools.tavily_tool import search_web
+# from tools.flight_tool import search_flights
+# from tools.tavily_tool import search_web
+
+from mcp_client import tavily_mcp_search, aviation_mcp_call, get_airports, get_airlines, weather_mcp_search, forecast_mcp_search
 
 
 load_dotenv()
@@ -43,196 +46,156 @@ class TravelState(TypedDict):
     llm_call: int
 
 
-flight_llm = llm.bind_tools([search_flights])
-hotel_llm = llm.bind_tools([search_web])
+# flight_llm = llm.bind_tools([search_flights])
+# hotel_llm = llm.bind_tools([search_web])
 itinerary_llm = llm.bind_tools([search_web])
 
+# Flight Tool Router Prompt
+FLIGHT_AGENT_PROMPT = """
+You are a travel flight expert.
 
-def flight_agent(state: TravelState):
+User Query:
+{query}
 
-    system_prompt = """
-You are a Flight Agent in an AI Travel Planner.
+Airport Information:
+{airport_data}
 
-Your job is to find flight information based on the user's travel request.
+Airline Information:
+{airline_data}
 
-Use the search_flights tool when flight information is required.
+Generate:
 
-The tool returns only:
-- departure
-- arrival
-- status
+1. Likely departure airport
+2. Likely arrival airport
+3. Airlines serving this route
+4. Typical flight duration
+5. Estimated airfare range
+6. Peak season pricing warning
+7. Booking advice
 
-Do not invent flight information.
-
-After receiving the tool result, provide a concise summary of the
-available flights.
+Return concise travel guidance.
 """
 
-    local_messages = [
-        ("system", system_prompt),
-        ("human", state["user_query"]),
-    ]
+def flight_agent(state: TravelState):
+    print("\nINSIDE FLIGHT AGENT\n")
+    query = state["user_query"]
+    try:
 
-    response = flight_llm.invoke(local_messages)
-    local_messages.append(response)
+        airports = asyncio.run(
+            aviation_mcp_call(
+                "list_airports"
+            )
+        )
 
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            if tool_call["name"] == "search_flights":
-                result = search_flights.invoke(tool_call["args"])
-                local_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
-        final = flight_llm.invoke(local_messages)
-        summary = final.content
-        calls = 2
-    else:
-        summary = response.content
-        calls = 1
+        airlines = asyncio.run(
+            aviation_mcp_call(
+                "list_airlines"
+            )
+        )
+
+        prompt = FLIGHT_AGENT_PROMPT.format(
+            query=query,
+            airport_data=str(airports)[:3000],
+            airline_data=str(airlines)[:3000]
+        )
+
+        response = llm.invoke([
+            SystemMessage(
+                content="You are an expert travel flight planner."
+            ),
+            HumanMessage(content=prompt)
+        ])
+
+        flight_data = response.content
+
+    except Exception as e:
+
+        flight_data = f"Flight information unavailable: {str(e)}"
 
     return {
-        "flight_results": summary,
-        "messages": [AIMessage(content=f"[Flight Agent] {summary}")],
-        "llm_call": state["llm_call"] + calls
+        "flight_results": flight_data,
+        "messages": [
+            AIMessage(
+                content="Flight recommendations generated"
+            )
+        ],
+        "llm_calls": state.get("llm_calls", 0) + 1
     }
 
 
 
 def hotel_agent(state: TravelState):
-    """
-    Hotel Agent:
-    - Reads the user's travel request
-    - Searches the web for relevant hotels
-    - Summarizes the hotel information
-    - Stores the result in hotel_results
-    """
+    query = f"Best hotels for {state['user_query']}"
 
-    system_prompt = """
-You are the Hotel Agent in an AI Travel Planner.
-
-Your job is to find relevant hotel information based on the
-user's travel request.
-
-Use the search_web tool when hotel information is required.
-
-When searching:
-- Identify the destination from the user's request.
-- Search for relevant hotels in that destination.
-- Consider the user's dates, number of travelers, and preferences
-  if they are available.
-- Make the search query specific.
-- Do not invent hotel information.
-- Only use information returned by the search tool.
-
-The search_web tool returns:
-- title
-- url
-- snippet
-
-After receiving the search results, summarize the most relevant
-hotel options for the user.
-
-Keep the response concise and useful.
-"""
-
-    local_messages = [
-        ("system", system_prompt),
-        ("human", state["user_query"]),
-    ]
-
-    response = hotel_llm.invoke(local_messages)
-    local_messages.append(response)
-
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            if tool_call["name"] == "search_web":
-                result = search_web.invoke(tool_call["args"])
-                local_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
-        final = hotel_llm.invoke(local_messages)
-        summary = final.content
-        calls = 2
-    else:
-        summary = response.content
-        calls = 1
+    hotel_results = asyncio.run(
+        tavily_mcp_search(query)
+    )
 
     return {
-        "hotel_results": summary,
-        "messages": [AIMessage(content=f"[Hotel Agent] {summary}")],
-        "llm_call": state["llm_call"] + calls
+        "hotel_results": hotel_results,
+        "messages": [
+            AIMessage(content="Hotel information fetched")
+        ],
+        "llm_calls": state.get("llm_calls", 0) + 1
     }
 
 
-def itinerary_agent(state: TravelState):
-    """
-    Itinerary Agent:
-    - Reads the user's travel request
-    - Searches the web for destination information
-    - Creates a travel itinerary
-    - Stores the result in itinerary
-    """
+def weather_agent(state: TravelState):
+    city = exatract_destination(state["user_query"])
 
-    system_prompt = """
-You are the Itinerary Agent in an AI Travel Planner.
+    weather_data = asyncio.run(
+        weather_mcp_search(city)
+    )
 
-Your job is to create a useful travel itinerary based on the
-user's travel request.
-
-Use the search_web tool when you need current or relevant
-destination information.
-
-When searching:
-- Identify the destination from the user's request.
-- Identify the trip duration if provided.
-- Search for important attractions, activities, and places to visit.
-- Consider the user's preferences if they are available.
-- Make the search query specific.
-- Do not invent information.
-- Only use information returned by the search tool.
-
-The search_web tool returns:
-- title
-- url
-- snippet
-
-Create a practical itinerary based on the available search results.
-
-The itinerary should include:
-- Day-by-day activities
-- Important places to visit
-- Suggested activities
-- Relevant travel information
-
-Keep the itinerary concise and useful.
-"""
-
-    local_messages = [
-        ("system", system_prompt),
-        ("human", state["user_query"]),
-    ]
-
-    response = itinerary_llm.invoke(local_messages)
-    local_messages.append(response)
-
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            if tool_call["name"] == "search_web":
-                result = search_web.invoke(tool_call["args"])
-                local_messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-                )
-        final = itinerary_llm.invoke(local_messages)
-        summary = final.content
-        calls = 2
-    else:
-        summary = response.content
-        calls = 1
+    forecast_data = asyncio.run(
+        forecast_mcp_search(city)
+    )
 
     return {
-        "itinerary": summary,
-        "messages": [AIMessage(content=f"[Itinerary Agent] {summary}")],
-        "llm_call": state["llm_call"] + calls
+        "weather_results": f"""
+        Current Weather:
+        {weather_data}
+
+        Forecast:
+        {forecast_data}
+        """,
+        "messages": [
+            AIMessage(
+                content="Weather information fetched"
+            )
+        ]
+    }
+
+
+# Itinerary Agent
+def itinerary_agent(state: TravelState):
+
+    prompt = f"""
+    Create a travel itinerary.
+    User Query:
+    {state['user_query']}
+
+    Flight Results:
+    {state['flight_results']}
+
+    Hotel Results:
+    {state['hotel_results']}
+
+    Weather Information:
+    {state['weather_results']}
+    """
+
+    response = llm.invoke([
+        SystemMessage(
+            content="You are an expert travel planner"
+        ),
+        HumanMessage(content=prompt)
+    ])
+
+    return {
+        "itinerary": response.content,
+        "messages": [response],
+        "llm_calls": state.get("llm_calls", 0) + 1
     }
 
 
