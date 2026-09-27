@@ -36,8 +36,8 @@ def _selected_agents(state: TravelState) -> list[str]:
     return [agent for agent in AGENT_ORDER if agent in selected]
 
 def route_from_supervisor(state: TravelState) -> str:
-    # if state.get("blocked"):
-    #     return "final_response"
+    if state.get("blocked"):
+        return "final_response"
     selected = _selected_agents(state)
     return selected[0] if selected else "itinerary_agent"
 

@@ -305,11 +305,38 @@ def hotel_agent(state: TravelState):
     print(result)
     print("=========================================\n")
 
+    # Unwrap the MCP content block and parse Tavily's embedded JSON
+    try:
+        parsed = json.loads(result[0]["text"])
+        search_results = parsed.get("results", [])
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        search_results = []
+
+    context = "\n\n".join(
+        f"{r.get('title', '')}: {r.get('content', '')[:400]}"
+        for r in search_results[:5]
+    )
+
+    prompt = f"""Based on this search data, recommend hotels and areas to stay for this trip: {state['user_query']}
+
+Search data:
+{context}
+
+Respond in under 150 words: the best area(s) to stay, 1-2 concrete hotel or price examples, and one practical booking tip. No headers, no tables, no disclaimers, no closing remarks."""
+
+    hotel_output = _llm_text(
+        "You are a concise hotel recommendation assistant.",
+        prompt,
+    )
+
+    print("\n========== HOTEL AGENT OUTPUT ==========")
+    print(hotel_output)
+    print("=========================================\n")
+
     return {
-        "hotel_results": str(result),
+        "hotel_results": hotel_output,
         "messages": [AIMessage(content="Hotel agent completed.")],
     }
-
 
 
 
