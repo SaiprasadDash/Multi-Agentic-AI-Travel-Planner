@@ -1,15 +1,8 @@
 import os
-import asyncio
-
-from dotenv import load_dotenv
+i
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# load_dotenv()
-load_dotenv(override=True)
-
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-AVIATION_STACK_API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+from config import TAVILY_API_KEY, AVIATION_STACK_API_KEY, OPENWEATHER_API_KEY 
 
 client = MultiServerMCPClient(
     {
@@ -62,153 +55,69 @@ client = MultiServerMCPClient(
 #     print(result)
 
 
-search_tool = None
-aviation_tools = {}
+_tools_cache = None
+# aviation_tools = {}
 
-async def initialize_mcp():
+async def get_tools():
     """connenct to mcp server and discove tools once."""
 
-    global search_tool
-    global aviation_tools
+    global _tools_cache
 
-    if search_tool is not None and aviation_tools:
-        return
+    if _tools_cache is not None:
+        try:
+                _tools_cache = await client.get_tools()
+        except Exception as e:
+            print(f"Error connecting to MCP server:")
+            print(type(e))
+            print(repr(e))
 
-    tools = await client.get_tools()
-    print("Available tools:")
-    for tool in tools:
-        print(tool.name)
+            if hasattr(e, "exception"):
+                print("\nSUB EXCEPTIONS:")
+                for i, sub in enumerate(e.exceptions):
+                    print(f"\n--- Exception {i+1} ---")
+                    print(type(sub))
+                    print(repr(sub))
 
-    search_tool = next(tool for tool in tools if tool.name == "tavily_search")
+
+    return _tools_cache
 
 
-    aviation_tools = {tool.name: tool for tool in tools if tool.name != "tavily_search"}
-    
-        
-
-async def tavily_mcp_search(quary: str):
-    await initialize_mcp()
-    result = await search_tool.ainvoke({
-        "query": quary
-    })
-    return result
-
-async def aviation_mcp_call(tool_name: str, tool_args: dict = None):
-    await initialize_mcp()
-    tools = await client.get_tools()
+async def call_tool(tool_name: str, tool_args: dict = None):
+    """Call a tool by name with the given arguments."""
+    tools = get_tools()
 
     tool = next(t for t in tools if t.name == tool_name)
+
+    if tool is None:
+        raise ValueError(f"Tool '{tool_name}' not found.")
 
     result = await tool.ainvoke(tool_args or {})
 
     return result
+    
+        
 
-
-async def get_airports():
-
-    await initialize_mcp()
-    tool = aviation_tools.get("list_airports")
-    if not tool:
-        return "Airport tool unavailable"
-
-    result = await tool.ainvoke({})
-
-    return result
-
-
-async def get_airlines():
-
-    await initialize_mcp()
-    tool = aviation_tools.get("list_airlines")
-
-    if not tool:
-        return "Airline tool unavailable"
-
-    result = await tool.ainvoke({})
-
-    return result
+# ------------------------
+# Tavily MCP Tools
+# ------------------------
 
 
 
+async def tavily_search(query: str):
+    return await call_tool("tavily_search", {"query": query})
 
 
+async def list_airports(search: str = "", limit: int = 10):
+    return await call_tool("list_airports", {"search": search, "limit": limit, "offset": 0})
 
 
-weather_tool = None
-forecast_tool = None
+async def list_airlines(search: str = "", limit: int = 10):
+    return await call_tool("list_airlines", {"search": search, "limit": limit, "offset": 0})
 
 
-async def initialize_weather_tools():
-
-    global weather_tool, forecast_tool
-
-    if weather_tool is not None:
-        return
-
-    tools = await client.get_tools()
-
-    weather_tool = next(
-        t for t in tools
-        if t.name == "get_current_weather"
-    )
-
-    forecast_tool = next(
-        t for t in tools
-        if t.name == "get_forcast"
-    )
+async def current_weather(city: str):
+    return await call_tool("get_current_weather", {"city": city})
 
 
-async def weather_mcp_search(city: str):
-
-    await initialize_weather_tools()
-
-    return await weather_tool.ainvoke(
-        {
-            "city": city
-        }
-    )
-
-
-async def forecast_mcp_search(city: str):
-
-    await initialize_weather_tools()
-
-    return await forecast_tool.ainvoke(
-        {
-            "city": city
-        }
-    )
-
-
-from langchain_groq import ChatGroq
-
-# LLM
-llm = ChatGroq(
-    model="qwen/qwen3.8-27b",
-    max_tokens=20
-)
-
-###################################
-# Destination Extractor
-###################################
-
-def extract_destination(query: str):
-
-    prompt = f"""
-    Extract only the destination city or country.
-
-    Query:
-    {query}
-
-    Return only destination name.
-    """
-
-    response = llm.invoke(prompt)
-
-    return response.content.strip()
-
-
-# if __name__ == "__main__":
-#     asyncio.run(main())
-
-
+async def forecast(city: str):
+    return await call_tool("get_forecast", {"city": city})
