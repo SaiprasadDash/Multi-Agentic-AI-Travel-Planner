@@ -12,12 +12,13 @@ from state import TravelState
 llm = get_llm()
 
 def _llm_text(system : str, prompt : str) -> str:
-    responce = llm.invoke(
+    response = llm.invoke(
         [
             SystemMessage(content=system),
             HumanMessage(content=prompt)
         ]
     )
+    return response.content
 
 def _json_from_llm(text: str) -> dict:
     print("\n========== RAW LLM RESPONSE ==========")
@@ -503,33 +504,46 @@ def final_response_agent(state: TravelState):
     print("Feedback:", state.get("human_feedback"))
     print("=======================================\n")
 
-    if state["approved"]:
+    budget_results = state.get(
+        "budget_results",
+        "No budget analysis was requested."
+    )
+
+    itinerary = state.get(
+        "itinerary",
+        ""
+    )
+
+    if state.get("approved", False):
+
         prompt = f"""
 The human approved this draft itinerary.
 
 Produce the final polished travel plan.
 
 Draft itinerary:
-{state['itinerary']}
+{itinerary}
 
 Budget notes:
-{state['budget_results']}
+{budget_results}
 """
+
     else:
+
         prompt = f"""
 The human did not approve the draft.
 
 Original user request:
-{state['user_query']}
+{state.get('user_query', '')}
 
 Draft itinerary:
-{state['itinerary']}
+{itinerary}
 
 Human feedback:
-{state['human_feedback']}
+{state.get('human_feedback', '')}
 
 Budget notes:
-{state['budget_results']}
+{budget_results}
 """
 
     result = _llm_text(
@@ -543,6 +557,8 @@ Budget notes:
 
     return {
         "final_response": result,
-        "messages": [AIMessage(content=result)],
+        "messages": [
+            AIMessage(content=result)
+        ],
         "llm_calls": state.get("llm_calls", 0) + 1,
     }
