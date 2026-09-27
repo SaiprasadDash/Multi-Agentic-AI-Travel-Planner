@@ -58,26 +58,15 @@ _tools_cache = None
 # aviation_tools = {}
 
 async def get_tools():
-    """connenct to mcp server and discove tools once."""
-
     global _tools_cache
-
-    if _tools_cache is not None:
+    if _tools_cache is None:      # fetch only if not already cached
         try:
-                _tools_cache = await client.get_tools()
+            _tools_cache = await client.get_tools()
         except Exception as e:
-            print(f"Error connecting to MCP server:")
-            print(type(e))
-            print(repr(e))
-
-            if hasattr(e, "exception"):
-                print("\nSUB EXCEPTIONS:")
+            print(f"Error connecting to MCP server: {type(e)} {repr(e)}")
+            if hasattr(e, "exceptions"):   # also fix: it's e.exceptions, not e.exception
                 for i, sub in enumerate(e.exceptions):
-                    print(f"\n--- Exception {i+1} ---")
-                    print(type(sub))
-                    print(repr(sub))
-
-
+                    print(f"--- Exception {i+1} ---\n{type(sub)}\n{repr(sub)}")
     return _tools_cache
 
 
@@ -119,4 +108,4 @@ async def current_weather(city: str):
 
 
 async def forecast(city: str):
-    return await call_tool("get_forecast", {"city": city})
+    return await call_tool("get_forcast", {"city": city})

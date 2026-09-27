@@ -8,6 +8,11 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 AVIATION_STACK_API_KEY = os.getenv("AVIATION_STACK_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+# GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 
 def get_llm():
-    return ChatGroq(model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
+    return ChatGroq(
+        model=os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"),
+        temperature=0,
+        max_tokens=700,
+    )
