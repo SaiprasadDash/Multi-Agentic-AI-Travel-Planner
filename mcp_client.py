@@ -1,5 +1,4 @@
 import os
-i
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from config import TAVILY_API_KEY, AVIATION_STACK_API_KEY, OPENWEATHER_API_KEY 
@@ -84,7 +83,7 @@ async def get_tools():
 
 async def call_tool(tool_name: str, tool_args: dict = None):
     """Call a tool by name with the given arguments."""
-    tools = get_tools()
+    tools = await get_tools()
 
     tool = next(t for t in tools if t.name == tool_name)
 

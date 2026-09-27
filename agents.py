@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import interrupt
 
 from config import get_llm
-from mcp_client import  , forecast, list_airlines, list_airports, tavily_search
+from mcp_client import current_weather, forecast, list_airlines, list_airports, tavily_search
 from state import TravelState
 
 llm = get_llm()
